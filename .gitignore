@@ -1,0 +1,20 @@
+# Godot
+.godot/
+.import/
+*.translation
+export_credentials.cfg
+.mono/
+data_*/
+mono_crash.*.json
+
+# Build output (attach builds to GitHub Releases instead of committing them)
+build/
+dist/
+
+# OS / editor clutter
+.DS_Store
+Thumbs.db
+*.tmp
+*.swp
+.vscode/
+.idea/
