@@ -7,17 +7,19 @@
 ### *One world isn't enough. Live in both.*
 
 A 2D pixel-art puzzle-platformer about jumping between two parallel dimensions.<br>
+**110 levels · 11 bosses · a shop full of skins and weapons.**<br>
 Made for **GitHub Game Off 2026**, theme **SHIFT**.
 
 [![Version](https://img.shields.io/badge/version-2.0.0-ff3b6b?style=for-the-badge)](CHANGELOG.md)
 [![Godot](https://img.shields.io/badge/Godot-4.5.1-478cbf?style=for-the-badge&logo=godotengine&logoColor=white)](https://godotengine.org)
-[![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS-6c4bb4?style=for-the-badge)](#-download--play)
+[![Platforms](https://img.shields.io/badge/platform-Windows-6c4bb4?style=for-the-badge)](#-download--play)
 [![License](https://img.shields.io/badge/code-MIT-2ea44f?style=for-the-badge)](LICENSE)
 [![Assets](https://img.shields.io/badge/assets-CC0-f5c542?style=for-the-badge)](CREDITS.md)
 
 **[⬇ Download](https://github.com/vhm4d777/shift-world/releases)** ·
 **[🎮 Controls](#-controls)** ·
 **[✨ Features](#-features)** ·
+**[👹 Bosses](#-worlds--bosses)** ·
 **[🛠 Build from source](#-building-from-source)**
 
 </div>
@@ -33,6 +35,7 @@ hazards, machines and monsters all change when you cross over. A wall in one wor
 in the other, and a deadly hunter in one becomes a harmless drifter in the other.
 
 Time your shifts right, even in mid-air, and find your way to the exit rift.
+Collect the gold tokens on the way, spend them in the shop, and beat the boss that guards the end of every world.
 
 <div align="center">
 <table>
@@ -43,6 +46,14 @@ Time your shifts right, even in mid-air, and find your way to the exit rift.
   <tr>
     <td><img src="itch/screenshots/07_sentinels.png" alt="Level 7: Sentinels"></td>
     <td><img src="itch/screenshots/10_the_rift.png" alt="Level 10: The Rift"></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/boss_cinder_titan.png" alt="Boss 6: Cinder Titan"></td>
+    <td><img src="docs/screenshots/boss_rift_heart.png" alt="Boss 11: The Rift Heart"></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/shop.png" alt="The shop"></td>
+    <td><img src="docs/screenshots/world_select.png" alt="World 2: Crystal Caverns"></td>
   </tr>
 </table>
 </div>
@@ -76,6 +87,38 @@ Levers and gates, crumbling bridges and checkpoints round out the toolbox.
 
 ---
 
+## 👹 Worlds & bosses
+
+Every world has 10 levels and ends with a boss. Bosses get tougher one by one: more health,
+faster attacks and new patterns. Below half health they become **enraged**.
+
+| # | World | Levels | Boss | New attack |
+|:---:|---|:---:|---|---|
+| 1 | The Seam | 1-10 | Gloom Warden | Bullet fans and rings |
+| 2 | Crystal Caverns | 11-20 | Prism Golem | Bullet rain |
+| 3 | Neon City | 21-30 | Neon Hydra | Ground slams with shockwaves |
+| 4 | Whispering Forest | 31-40 | Thorn Mother | Lasers |
+| 5 | Sunken Ruins | 41-50 | Drowned King | Charging dash |
+| 6 | Ember Wastes | 51-60 | Cinder Titan | Summoned hunting orbs |
+| 7 | Frozen Peaks | 61-70 | Frost Wyrm | Slams that also fire upward |
+| 8 | Storm Spire | 71-80 | Storm Herald | Double lasers, mixed rings |
+| 9 | Star Garden | 81-90 | Star Devourer | Triple slams |
+| 10 | Clockwork Depths | 91-100 | Clockwork God | Everything, faster |
+| 11 | The Void Heart | 101-110 | The Rift Heart | Everything, at full power |
+
+> [!TIP]
+> Boss attacks only hurt you in their own world: **blue** in Light, **red** in Dark, **purple** in both.
+> Shift to dodge, and keep shooting.
+
+### 🪙 Shop
+
+Tokens are hidden along every level (499 in total), and each boss pays a big reward the first time you beat it.
+
+- **8 skins:** Drifter, Ember, Mint, Royal, Shadow, Solar, Glacier and Rift Walker, some with crowns, horns, halos or headbands.
+- **7 weapons:** Spark Pistol, Twin Blaster, Scatter Gun, Plasma Rifle, Rift Repeater, Storm Caster and Prism Cannon.
+
+---
+
 ## ⬇ Download & play
 
 Get the latest build from the **[Releases](https://github.com/vhm4d777/shift-world/releases)** page.
@@ -83,7 +126,7 @@ Get the latest build from the **[Releases](https://github.com/vhm4d777/shift-wor
 <details open>
 <summary><b>🪟 Windows 10/11 (64-bit)</b></summary>
 
-1. Download `ShiftWorlds-v1.0.0-windows.zip`.
+1. Download `ShiftWorlds-v2.0.0-windows.zip`.
 2. Right-click it and choose **Extract All...**
 3. Double-click **`ShiftWorlds.exe`**.
 
@@ -93,20 +136,21 @@ Click **More info → Run anyway**.
 </details>
 
 <details>
-<summary><b>🐧 Linux (64-bit)</b></summary>
+<summary><b>🐧 Linux (64-bit) and 🍎 macOS: version 1.0 only</b></summary>
+
+Version 2.0 is built for Windows only. Linux and macOS builds of **1.0** (10 levels, no bosses) are on the
+[v1.0.0 release](https://github.com/vhm4d777/shift-world/releases/tag/v1.0.0). You can also build 2.0 yourself
+from source (see below).
+
+Linux:
 
 ```bash
 unzip ShiftWorlds-v1.0.0-linux.zip
 chmod +x ShiftWorlds.x86_64
 ./ShiftWorlds.x86_64
 ```
-</details>
 
-<details>
-<summary><b>🍎 macOS (experimental, unsigned)</b></summary>
-
-Extract `ShiftWorlds-v1.0.0-macos.zip`, then **right-click** `SHIFT WORLDS.app` and choose **Open**.
-Apple can't verify the developer, so you'll need to confirm the first launch.
+macOS (unsigned): extract `ShiftWorlds-v1.0.0-macos.zip`, then **right-click** `SHIFT WORLDS.app` and choose **Open**.
 </details>
 
 <details>
@@ -241,13 +285,15 @@ itch/                    Store page text, cover, banner and screenshots
 
 ### 🧱 Make your own levels
 
-Levels are 30×17 ASCII grids in [`scripts/levels.gd`](scripts/levels.gd):
+Levels are 30×17 ASCII grids. The handcrafted ones and the boss arenas are in [`scripts/levels.gd`](scripts/levels.gd);
+levels 11-110 are in [`scripts/levels_gen.gd`](scripts/levels_gen.gd), written by `tools/gen_levels.gd`.
 
 | Symbol | Meaning | Symbol | Meaning |
 |:---:|---|:---:|---|
 | `L` | Light-only block | `w` | Warden |
 | `D` | Dark-only block | `f` | Wisp |
 | `S` | Lever | `G` | Gate |
+| `$` | Token | `E` | Exit rift |
 
 The full legend is at the top of the file. After editing, run `tests/solve.gd` to check that the level can be beaten.
 
