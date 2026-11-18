@@ -1,4 +1,4 @@
-SHIFT WORLDS  v1.0.0
+SHIFT WORLDS  v2.0.0
 =====================
 A pixel-art puzzle-platformer about shifting between two parallel worlds.
 Made for GitHub Game Off 2026 (theme: SHIFT).
@@ -19,6 +19,7 @@ CONTROLS
 Move ............ A / D  or  Arrow keys      (gamepad: left stick / d-pad)
 Jump ............ Space  (hold to jump higher)   (gamepad: A)
 SHIFT WORLDS .... Shift  (also X or K)        (gamepad: X or bumpers)
+Shoot (bosses) .. J, F, C, Ctrl or left click (gamepad: B / right trigger)
 Restart level ... R                           (gamepad: Y)
 Pause ........... Esc or P                    (gamepad: Start)
 Fullscreen ...... F11
@@ -28,7 +29,11 @@ TIPS
 - Faded, dotted outlines show what exists in the OTHER world.
 - You can shift in mid-air.
 - You can't shift if the other world has something solid where you stand.
-- Every level hides one Memory Shard. Find all 10!
+- Collect the gold tokens in every level and spend them in the SHOP
+  on new skins and weapons.
+- A boss waits after every 10 levels. Its attacks only hurt you in their own
+  world (blue = Light, red = Dark, purple = both), so shift to dodge.
+- The first 10 levels each hide a Memory Shard. Find them all!
 
 SAVE DATA
 ---------

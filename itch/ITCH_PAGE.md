@@ -45,7 +45,10 @@ and the only way forward is to use both.
 - Bridges, walls and spikes that exist on only one side.
 
 **Features**
-- 10 handcrafted levels, from a gentle tutorial to the final challenge, *The Rift*
+- 110 levels across 11 worlds, from a gentle tutorial to the Void Heart
+- 11 boss fights with health bars, screen shake and attacks you dodge by shifting worlds
+- Collect tokens and spend them in the shop on 8 skins and 7 weapons
+- Choose your own name
 - A hidden **Memory Shard** in every level. Can you find all 10?
 - Adaptive soundtrack: the Light and Dark themes play together and crossfade every time you shift
 - Checkpoints, levers & gates, crumbling bridges, moving platforms and lifts

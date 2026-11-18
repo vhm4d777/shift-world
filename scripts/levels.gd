@@ -9,6 +9,7 @@ extends RefCounted
 ##  B  crumbling bridge                  :  invisible stopper for moving platforms
 ##  h  horizontal platform (run of h)    v  vertical lift (run of v)
 ##  S  lever    C  checkpoint    *  memory shard    E  exit rift    ?  hint stone
+##  $  token (collectible)
 ##  P  player start    w / W  warden walking right / left    f  wisp    t / T  sentinel facing left / right
 ## Signs are listed in reading order (top-to-bottom, left-to-right).
 
@@ -264,13 +265,169 @@ const LEVELS := [
 			"##############################",
 		],
 		"signs": [
-			"The final rift.  Everything you have learned, all at once.  Good luck.",
+			"The rift of the Seam.  Everything you have learned, all at once.  Something waits beyond it...",
 		],
 	},
 ]
 
-static func count() -> int:
-	return LEVELS.size()
+# ------------------------------------------------------------------ stages
+# The game is split into 11 worlds. Each world has 10 levels followed by a boss:
+# stage index = world * 11 + position (position 10 is the boss arena).
+const PER_WORLD := 11
+const WORLDS := 11
+const NORMAL_LEVELS := 110
 
-static func get_level(i: int) -> Dictionary:
-	return LEVELS[i]
+const THEMES := [
+	"The Seam", "Crystal Caverns", "Neon City", "Whispering Forest", "Sunken Ruins",
+	"Ember Wastes", "Frozen Peaks", "Storm Spire", "Star Garden", "Clockwork Depths", "The Void Heart",
+]
+
+const BOSSES := [
+	{"name": "Gloom Warden", "title": "Keeper of the Seam"},
+	{"name": "Prism Golem", "title": "Heart of the Caverns"},
+	{"name": "Neon Hydra", "title": "Queen of the City"},
+	{"name": "Thorn Mother", "title": "Root of the Forest"},
+	{"name": "Drowned King", "title": "Lord of the Ruins"},
+	{"name": "Cinder Titan", "title": "Fire of the Wastes"},
+	{"name": "Frost Wyrm", "title": "Breath of the Peaks"},
+	{"name": "Storm Herald", "title": "Voice of the Spire"},
+	{"name": "Star Devourer", "title": "Hunger of the Garden"},
+	{"name": "Clockwork God", "title": "Engine of the Depths"},
+	{"name": "The Rift Heart", "title": "Where Both Worlds Begin"},
+]
+
+const ARENAS := [
+	[
+		"##############################",
+		"#............................#",
+		"#............................#",
+		"#............................#",
+		"#............................#",
+		"#............................#",
+		"#............................#",
+		"#.....LLLL..........DDDD.....#",
+		"#............................#",
+		"#............................#",
+		"#..####......####......####..#",
+		"#............................#",
+		"#............................#",
+		"#P...........................#",
+		"##############################",
+		"##############################",
+		"##############################",
+	],
+	[
+		"##############################",
+		"#............................#",
+		"#............................#",
+		"#............................#",
+		"#............................#",
+		"#............................#",
+		"#..........DDDDDDDD..........#",
+		"#............................#",
+		"#............................#",
+		"#...LLLL..............LLLL...#",
+		"#............................#",
+		"#............................#",
+		"#.........####..####.........#",
+		"#P...........................#",
+		"##############################",
+		"##############################",
+		"##############################",
+	],
+	[
+		"##############################",
+		"#............................#",
+		"#............................#",
+		"#............................#",
+		"#............................#",
+		"#............................#",
+		"#............................#",
+		"#..DDD..................LLL..#",
+		"#............................#",
+		"#............................#",
+		"#........LLL......DDD........#",
+		"#............................#",
+		"#............................#",
+		"#P...........................#",
+		"##############################",
+		"##############################",
+		"##############################",
+	],
+	[
+		"##############################",
+		"#............................#",
+		"#............................#",
+		"#............................#",
+		"#............................#",
+		"#............................#",
+		"#.............##.............#",
+		"#............................#",
+		"#.....DDDD..........LLLL.....#",
+		"#............................#",
+		"#............................#",
+		"#.##........................##",
+		"#............................#",
+		"#P...........................#",
+		"##############################",
+		"##############################",
+		"##############################",
+	],
+]
+
+
+static func count() -> int:
+	return PER_WORLD * WORLDS
+
+
+static func is_boss(stage: int) -> bool:
+	return stage % PER_WORLD == PER_WORLD - 1
+
+
+static func world_of(stage: int) -> int:
+	return stage / PER_WORLD
+
+
+## Index into the list of normal levels (0..109), or -1 for a boss stage.
+static func normal_index(stage: int) -> int:
+	if is_boss(stage):
+		return -1
+	return world_of(stage) * 10 + stage % PER_WORLD
+
+
+## Level number (1..110) or boss number (1..11) as shown to the player.
+static func number(stage: int) -> int:
+	if is_boss(stage):
+		return world_of(stage) + 1
+	return normal_index(stage) + 1
+
+
+static func label(stage: int) -> String:
+	return ("BOSS %d" if is_boss(stage) else "LEVEL %d") % number(stage)
+
+
+static func get_level(stage: int) -> Dictionary:
+	if is_boss(stage):
+		var b := world_of(stage)
+		var info: Dictionary = BOSSES[b]
+		return {"name": info["name"], "title": info["title"], "map": ARENAS[b % ARENAS.size()], "boss": b + 1, "signs": []}
+	return get_normal(normal_index(stage))
+
+
+static func get_normal(n: int) -> Dictionary:
+	var d: Dictionary
+	if n < LEVELS.size():
+		d = LEVELS[n].duplicate()
+		if n < LevelsGen.ORIG_TOKENS.size():
+			d["tokens"] = LevelsGen.ORIG_TOKENS[n]
+	else:
+		d = LevelsGen.GEN[n - LEVELS.size()]
+	return d
+
+
+## Every stage's token count, used for menus.
+static func token_count(stage: int) -> int:
+	if is_boss(stage):
+		return 0
+	var d := get_normal(normal_index(stage))
+	return (d.get("tokens", []) as Array).size()

@@ -96,17 +96,63 @@ var shake_enabled := true
 var title_mode := false   # used by menus: only backgrounds + ambience
 var title_world := LIGHT
 
+var theme := -1
+var tile_tint := Color.WHITE
+var fog_col: Array = [Color(1, 1, 1, 0), Color(1, 1, 1, 0)]
+var floaters: Array = []          # [{p, text, col, life, max}]
+var player_pal: Array = []        # skin palettes [light, dark]
+var player_acc := ""
+var name_tag := ""
+
+const BOSS_LOOKS := [
+	# body, dark, eye, glow, horns, eyes, crown, tentacles
+	["6f5bd6", "2a1a5a", "ffffff", "9b7bff", 6, 1, false, false],
+	["7fe3ff", "1a5a7a", "ffffff", "bff0ff", 8, 1, false, false],
+	["ff2e9a", "5a0a3a", "2ef0ff", "ff7ad0", 0, 3, false, true],
+	["4aa060", "103a20", "ffd04a", "9bff7a", 10, 2, false, true],
+	["2a8aa8", "082a40", "60f0ff", "60d0ff", 4, 1, true, true],
+	["ff6a20", "4a1004", "fff0a0", "ffb040", 12, 2, false, false],
+	["bfe9ff", "3a6a9a", "40d8ff", "ffffff", 8, 2, false, true],
+	["8a6aff", "2a1060", "ffffff", "c8a0ff", 14, 3, false, false],
+	["3a2a7a", "0a0420", "ffd0f0", "a0c0ff", 0, 5, true, true],
+	["c8a060", "4a3010", "ff8a30", "fff0c0", 16, 1, true, false],
+	["ff2e55", "1a0008", "ffd84a", "ff2e55", 18, 3, true, true],
+]
+
 
 func _ready() -> void:
-	bg_far = [load("res://assets/bg_light_far.png"), load("res://assets/bg_dark_far.png")]
-	bg_mid = [load("res://assets/bg_light_mid.png"), load("res://assets/bg_dark_mid.png")]
+	set_theme(0)
+	rebake_player()
+	for i in 5:
+		scarf.append(Vector2.ZERO)
+
+
+## Rebuilds the player sprites from the equipped skin.
+func rebake_player() -> void:
+	player_pal = Game.skin_palettes()
+	player_acc = Game.SKINS[Game.skin]["acc"]
 	for w in 2:
 		for key in PLAYER_FRAMES.keys():
 			if key == "body":
 				continue
 			sprites[w][key] = _bake_player(w, key)
-	for i in 5:
-		scarf.append(Vector2.ZERO)
+
+
+## Loads the backdrop for a world (0 = the original Seam, 1-10 = new worlds).
+func set_theme(t: int) -> void:
+	if t == theme:
+		return
+	theme = t
+	if t <= 0:
+		bg_far = [load("res://assets/bg_light_far.png"), load("res://assets/bg_dark_far.png")]
+		bg_mid = [load("res://assets/bg_light_mid.png"), load("res://assets/bg_dark_mid.png")]
+	else:
+		bg_far = []
+		bg_mid = []
+		for wn in ["light", "dark"]:
+			bg_far.append(load("res://assets/themes/bg_%02d_%s_far.png" % [t, wn]))
+			bg_mid.append(load("res://assets/themes/bg_%02d_%s_mid.png" % [t, wn]))
+	fog_col = [Backdrops.fog(t, LIGHT), Backdrops.fog(t, DARK)]
 
 
 # ------------------------------------------------------------------ setup
@@ -115,6 +161,8 @@ func set_sim(s: Sim) -> void:
 	sim = s
 	near_sign = -1
 	particles.clear()
+	floaters.clear()
+	set_theme(Levels.world_of(sim.level_index))
 	shift_fx = 1.0
 	old_world = sim.world
 	win_fx = -1.0
@@ -198,7 +246,7 @@ func _handle_events(events: Array) -> void:
 				add_shake(6.0)
 				flash = 0.45
 				flash_color = Color("ff2e55")
-				var pal: Dictionary = PLAYER_PAL[sim.world]
+				var pal: Dictionary = player_pal[sim.world]
 				_burst(p, 34, [pal["c"], pal["h"], pal["s"], pal["e"]], 120.0, 0.9, 260.0)
 				Sound.play("die")
 			"shard":
@@ -231,7 +279,87 @@ func _handle_events(events: Array) -> void:
 				Sound.play("bolt", 0.1, -6.0)
 			"bolt_fizzle":
 				_burst(p, 5, [Color("ff2e55"), Color("ffb0c0")], 40.0, 0.25, 0.0)
-				Sound.play("fizzle", 0.15, -8.0)
+				Sound.play("fizzle", 0.15, -8.0, 0.05)
+			"token":
+				_burst(p, 16, [Color("ffd84a"), Color("fff3a0"), Color.WHITE], 60.0, 0.5, -30.0)
+				_floater(p + Vector2(0, -8), "+1", Color("ffd84a"))
+				Sound.play("token", 0.05)
+			"fire":
+				var wc := Color(sim.weapon["color"])
+				_burst(p, 3, [wc, Color.WHITE], 30.0, 0.15, 0.0, Vector2(sim.facing * 30.0, 0))
+				Sound.play("fire", 0.08, -3.0, 0.06)
+			"shot_fizzle":
+				_burst(p, 3, [Color.WHITE, C_ACCENT[sim.world]], 25.0, 0.2, 0.0)
+			"hurt":
+				add_shake(5.0)
+				flash = 0.35
+				flash_color = Color("ff2e55")
+				aberration = 0.8
+				_burst(p, 14, [Color("ff2e55"), Color.WHITE], 80.0, 0.5, 200.0)
+				Sound.play("hurt")
+			"boss_hit":
+				add_shake(0.8)
+				_burst(p, 4, [Color.WHITE, Color(sim.weapon["color"]), _boss_col(3)], 50.0, 0.3, 80.0)
+				Sound.play("boss_hit", 0.1, -2.0, 0.05)
+				if int(sim.weapon["dmg"]) >= 3:
+					_floater(p, "-%d" % int(sim.weapon["dmg"]), Color(sim.weapon["color"]))
+			"boss_roar":
+				add_shake(7.0)
+				aberration = 1.0
+				wave_t = 0.0
+				wave_center = p
+				Sound.play("boss_roar")
+			"boss_fire":
+				Sound.play("boss_fire", 0.1, -2.0, 0.05)
+			"boss_phase":
+				add_shake(9.0)
+				flash = 0.6
+				flash_color = Color("ff2e55")
+				aberration = 1.2
+				wave_t = 0.0
+				wave_center = p
+				_burst(p, 50, [Color("ff2e55"), Color("ffb040"), Color.WHITE], 140.0, 1.0, 0.0)
+				_floater(p + Vector2(0, -30), "ENRAGED!", Color("ff2e55"))
+				Sound.play("phase")
+				Sound.play("boss_roar", 0.0, -3.0)
+			"boss_die":
+				add_shake(10.0)
+				flash = 0.8
+				flash_color = Color.WHITE
+				Sound.play("boss_die")
+			"boss_boom":
+				add_shake(4.0)
+				_burst(p, 22, [Color("ffd84a"), Color("ff7a3d"), Color("ff2e55"), Color.WHITE], 110.0, 0.7, 40.0)
+				Sound.play("explosion", 0.15, -4.0, 0.08)
+			"boss_dead":
+				add_shake(12.0)
+				flash = 1.0
+				flash_color = Color.WHITE
+				wave_t = 0.0
+				wave_center = p
+				aberration = 1.5
+				_burst(p, 90, [_boss_col(0), _boss_col(3), Color("ffd84a"), Color.WHITE], 200.0, 1.4, 60.0)
+				Sound.play("explosion")
+			"slam":
+				add_shake(7.0)
+				_burst(p, 24, [C_SPECK[sim.world], C_SIDE[sim.world], Color.WHITE], 90.0, 0.6, 300.0, Vector2(0, -40))
+				Sound.play("slam")
+			"boss_dash":
+				add_shake(3.0)
+				Sound.play("boss_roar", 0.2, -8.0)
+			"laser_charge":
+				Sound.play("laser_charge")
+			"laser_fire":
+				add_shake(4.0)
+				Sound.play("laser", 0.05)
+			"boss_summon":
+				_burst(p, 30, [_boss_col(3), Color.WHITE], 90.0, 0.6, 0.0)
+				Sound.play("shift_dark", 0.1, -4.0)
+			"orb_hit":
+				_burst(p, 4, [Color.WHITE], 30.0, 0.2, 0.0)
+			"orb_pop":
+				_burst(p, 14, [Color.WHITE, C_ACCENT[0], C_ACCENT[1]], 70.0, 0.4, 0.0)
+				Sound.play("orb_pop", 0.1)
 
 
 func on_respawn() -> void:
@@ -247,6 +375,16 @@ func on_respawn() -> void:
 		particles.append({"p": start, "v": (c - start) * 2.2, "life": 0.45, "max": 0.45, "c": C_ACCENT[sim.world], "s": 2.0, "g": 0.0, "front": true})
 	Sound.play("respawn")
 	Sound.set_world(sim.world == DARK, true)
+
+
+func _floater(p: Vector2, text: String, col: Color) -> void:
+	floaters.append({"p": p, "text": text, "col": col, "life": 0.9, "max": 0.9})
+
+
+func _boss_col(i: int) -> Color:
+	if sim == null or sim.boss == null:
+		return Color.WHITE
+	return Color(BOSS_LOOKS[(sim.boss.tier - 1) % BOSS_LOOKS.size()][i])
 
 
 func add_shake(a: float) -> void:
@@ -311,6 +449,13 @@ func _process(delta: float) -> void:
 		p["p"] = pos
 		keep.append(p)
 	particles = keep
+	var fk := []
+	for f in floaters:
+		f["life"] -= delta
+		f["p"] += Vector2(0, -18.0 * delta)
+		if f["life"] > 0.0:
+			fk.append(f)
+	floaters = fk
 	_update_scarf(delta)
 	_update_post()
 	queue_redraw()
@@ -327,6 +472,7 @@ func _update_post() -> void:
 	else:
 		post.set_shader_parameter("radius", -1.0)
 	post.set_shader_parameter("aberration", aberration * 0.006)
+	post.set_shader_parameter("bloom", 0.9 if world_shown() == DARK else 0.55)
 	post.set_shader_parameter("flash", flash)
 	post.set_shader_parameter("flash_color", Vector3(flash_color.r, flash_color.g, flash_color.b))
 
@@ -366,24 +512,238 @@ func _draw() -> void:
 	var dim_l := Color(0.16, 0.10, 0.40, 0.26)
 	var dim_d := Color(0.0, 0.0, 0.0, 0.32)
 	draw_rect(Rect2(0, 0, 480, 272), dim_l if w == LIGHT else dim_d)
-	draw_texture(tile_tex[w], Vector2.ZERO)
+	_draw_fog(w, 0.5)
+	var tint := Backdrops.tint(theme, w)
+	# soft drop shadow gives the level depth against the backdrop
+	draw_texture(tile_tex[w], Vector2(3, 4), Color(0, 0, 0, 0.32))
+	draw_texture(tile_tex[w], Vector2.ZERO, tint)
 	if t < 1.0:
-		draw_texture(tile_tex[old_world], Vector2.ZERO, Color(1, 1, 1, 1.0 - _ease(t)))
+		draw_texture(tile_tex[old_world], Vector2.ZERO, Color(tint.r, tint.g, tint.b, 1.0 - _ease(t)))
 	_draw_dynamic_tiles(w)
 	_draw_signs(w)
 	_draw_checkpoints(w)
 	_draw_exit(w)
 	_draw_shard(w)
+	_draw_tokens(w)
 	_draw_levers(w)
 	_draw_movers(w)
 	_draw_turrets(w)
 	_draw_walkers(w)
 	_draw_wisps(w)
 	_draw_bolts()
+	if sim.boss != null:
+		_draw_boss_fx(w)
+		_draw_boss(w)
 	_draw_player(w)
+	if sim.boss != null:
+		_draw_boss_projectiles(w)
+		_draw_pbullets()
 	for p in particles:
 		if p["front"]:
 			_draw_particle(p)
+	_draw_fog(w, 1.0)
+	for f in floaters:
+		var a: float = clampf(f["life"] / f["max"] * 2.0, 0.0, 1.0)
+		var c: Color = f["col"]
+		PixelFont.draw_centered(self, f["text"], f["p"].x, f["p"].y, Color(c.r, c.g, c.b, a), 1, Color(0, 0, 0, a * 0.7))
+	if name_tag != "" and show_player:
+		var pp := player_draw_pos()
+		PixelFont.draw_centered(self, name_tag, pp.x + 5, pp.y - 12, Color(1, 1, 1, 0.85), 1, Color(0, 0, 0, 0.6))
+
+
+## Drifting haze bands in the theme's fog colour (a cheap depth cue).
+func _draw_fog(w: int, strength: float) -> void:
+	var c: Color = fog_col[w]
+	if c.a == 0.0:
+		return
+	for i in 3:
+		var y := 200.0 + i * 22.0 + sin(anim * 0.4 + i) * 4.0
+		var a := (0.05 + i * 0.025) * strength
+		for k in 6:
+			draw_rect(Rect2(0, y + k * 3, 480, 3), Color(c.r, c.g, c.b, a * (1.0 - k / 6.0)))
+
+
+func _draw_tokens(w: int) -> void:
+	for i in sim.tokens.size():
+		if sim.tokens_taken[i]:
+			continue
+		var c := sim.tokens[i].get_center() + Vector2(0, sin(anim * 3.0 + i) * 1.5)
+		var spin: float = absf(cos(anim * 3.0 + i * 0.7))
+		var hw := maxf(1.0, spin * 4.0)
+		draw_circle(c, 7.0 + sin(anim * 4.0 + i), Color(1.0, 0.85, 0.3, 0.14))
+		draw_set_transform(c, 0.0, Vector2(hw / 4.0, 1.0))
+		draw_circle(Vector2.ZERO, 4.5, Color("a8740a"))
+		draw_circle(Vector2.ZERO, 3.6, Color("ffd84a"))
+		draw_circle(Vector2(-1, -1), 1.6, Color("fff6c0"))
+		draw_set_transform(Vector2.ZERO)
+		if spin > 0.6:
+			draw_rect(Rect2(c + Vector2(-0.5, -2), Vector2(1, 4)), Color("c08a10"))
+		if randf() < 0.04:
+			particles.append({"p": c + Vector2(randf_range(-4, 4), randf_range(-4, 4)), "v": Vector2(0, -10), "life": 0.4, "max": 0.4, "c": Color("fff3a0"), "s": 1.0, "g": 0.0, "front": true})
+
+
+# --- boss
+
+func _draw_boss(w: int) -> void:
+	var b := sim.boss
+	if b.state == "dead":
+		return
+	var look: Array = BOSS_LOOKS[(b.tier - 1) % BOSS_LOOKS.size()]
+	var body := Color(look[0])
+	var dark := Color(look[1])
+	var eye := Color(look[2])
+	var glow := Color(look[3])
+	var c := Vector2(b.x, b.y).round()
+	var r := b.w / 2.0
+	if b.state == "dying":
+		c += Vector2(randf_range(-2, 2), randf_range(-2, 2))
+		if fmod(anim * 20.0, 1.0) < 0.3:
+			body = Color.WHITE
+	# aura
+	var pulse := sin(anim * 4.0) * 2.0
+	var aura := glow if b.phase == 1 else Color("ff2e55")
+	draw_circle(c, r * 1.7 + pulse, Color(aura.r, aura.g, aura.b, 0.08))
+	draw_circle(c, r * 1.35 + pulse * 0.5, Color(aura.r, aura.g, aura.b, 0.12))
+	if b.telegraph > 0.0:
+		draw_arc(c, r * (2.4 - b.telegraph), 0, TAU, 32, Color(aura.r, aura.g, aura.b, b.telegraph * 0.8), 2.0)
+	# tentacles
+	if look[7]:
+		for i in 5:
+			var base := c + Vector2((i - 2) * r * 0.4, r * 0.7)
+			var pts := PackedVector2Array()
+			for k in 7:
+				var tt := k / 6.0
+				pts.append(base + Vector2(sin(anim * 3.0 + i + tt * 4.0) * 4.0 * tt, tt * r * 1.1))
+			draw_polyline(pts, dark, 3.0)
+			draw_polyline(pts, body.darkened(0.2), 1.0)
+	# horns / spikes around the body
+	var horns: int = look[4]
+	for i in horns:
+		var a := TAU * i / horns + anim * (0.3 if b.phase == 2 else 0.1)
+		var dirv := Vector2(cos(a), sin(a))
+		var side := Vector2(-dirv.y, dirv.x)
+		var tip := c + dirv * (r + 7.0 + (3.0 if b.phase == 2 else 0.0))
+		draw_colored_polygon(PackedVector2Array([c + dirv * (r - 2) + side * 3.0, tip, c + dirv * (r - 2) - side * 3.0]), dark)
+	# body with shading (dark rim, lit core, specular)
+	draw_circle(c, r + 1.0, dark.darkened(0.4))
+	draw_circle(c, r, dark)
+	draw_circle(c + Vector2(-r * 0.12, -r * 0.12), r * 0.86, body.darkened(0.15))
+	draw_circle(c + Vector2(-r * 0.2, -r * 0.2), r * 0.62, body)
+	draw_circle(c + Vector2(-r * 0.38, -r * 0.4), r * 0.18, body.lightened(0.5))
+	# crown
+	if look[6]:
+		var top := c + Vector2(0, -r - 1)
+		for i in 5:
+			var x := (i - 2) * r * 0.28
+			draw_colored_polygon(PackedVector2Array([top + Vector2(x - 3, 2), top + Vector2(x, -7 - (3 if i == 2 else 0)), top + Vector2(x + 3, 2)]), Color("ffd84a"))
+		draw_rect(Rect2(top + Vector2(-r * 0.7, 0), Vector2(r * 1.4, 3)), Color("c08a10"))
+	# eyes look at the player
+	var eyes: int = look[5]
+	var look_dir := (Vector2(sim.px + 5, sim.py + 7) - c).normalized()
+	for i in eyes:
+		var ex := c + Vector2((i - (eyes - 1) / 2.0) * r * 0.42, -r * 0.1 - (absf(i - (eyes - 1) / 2.0) * -2.0))
+		var er := r * (0.3 if eyes == 1 else 0.17)
+		draw_circle(ex, er + 1.0, dark.darkened(0.5))
+		draw_circle(ex, er, eye)
+		var pupil := Color("ff2e55") if b.phase == 2 else dark.darkened(0.6)
+		draw_circle(ex + look_dir * er * 0.4, er * 0.5, pupil)
+		draw_circle(ex + look_dir * er * 0.4 + Vector2(-er * 0.2, -er * 0.25), er * 0.15, Color.WHITE)
+	# mouth opens while an attack is charging
+	var open := b.telegraph * r * 0.25 + 1.0
+	var my := c.y + r * 0.42
+	var mpts := PackedVector2Array()
+	for k in 9:
+		var xx := c.x - r * 0.45 + k * r * 0.1125
+		mpts.append(Vector2(xx, my + (open if k % 2 == 0 else -open * 0.3)))
+	draw_polyline(mpts, dark.darkened(0.6), 2.0)
+	# hit flash
+	if b.flash > 0.0:
+		draw_circle(c, r, Color(1, 1, 1, b.flash * 0.7))
+	if b.state == "intro":
+		var k := clampf(b.t / 1.8, 0.0, 1.0)
+		draw_circle(c, r * 2.0 * (1.0 - k), Color(aura.r, aura.g, aura.b, 0.3 * (1.0 - k)))
+	if randf() < 0.3:
+		var a2 := randf() * TAU
+		particles.append({"p": c + Vector2(cos(a2), sin(a2)) * r, "v": Vector2(cos(a2), sin(a2)) * 15.0, "life": 0.5, "max": 0.5, "c": aura, "s": 1.0, "g": 0.0, "front": false})
+
+
+func _world_col(world: int) -> Color:
+	if world == BossFight.BOTH:
+		return Color("d070ff")
+	return Color("4fc3ff") if world == LIGHT else Color("ff2e55")
+
+
+func _draw_boss_fx(w: int) -> void:
+	var b := sim.boss
+	# lasers: blinking warning line, then a thick beam
+	for l in b.lasers:
+		var col := _world_col(l["w"])
+		var y: float = l["y"]
+		var live: bool = l["w"] == BossFight.BOTH or l["w"] == w
+		if l["t"] < l["warn"]:
+			var k: float = l["t"] / l["warn"]
+			if fmod(anim * (6.0 + k * 14.0), 1.0) < 0.6:
+				draw_rect(Rect2(0, y - 0.5, 480, 1), Color(col.r, col.g, col.b, 0.35 + k * 0.5))
+			draw_rect(Rect2(0, y - l["h"] / 2.0, 480, l["h"]), Color(col.r, col.g, col.b, 0.06 * k))
+		else:
+			var hh: float = l["h"] * (1.0 + sin(anim * 40.0) * 0.1)
+			if live:
+				draw_rect(Rect2(0, y - hh, 480, hh * 2.0), Color(col.r, col.g, col.b, 0.18))
+				draw_rect(Rect2(0, y - hh / 2.0, 480, hh), col)
+				draw_rect(Rect2(0, y - hh / 5.0, 480, hh / 2.5), Color.WHITE)
+				if randf() < 0.8:
+					particles.append({"p": Vector2(randf() * 480, y + randf_range(-3, 3)), "v": Vector2(randf_range(-20, 20), randf_range(-30, 30)), "life": 0.3, "max": 0.3, "c": col, "s": 1.0, "g": 0.0, "front": true})
+			else:
+				for x in range(0, 480, 4):
+					draw_rect(Rect2(x, y - hh / 2.0, 2, 1), Color(col.r, col.g, col.b, 0.4))
+					draw_rect(Rect2(x + 2, y + hh / 2.0, 2, 1), Color(col.r, col.g, col.b, 0.4))
+	# floor shockwaves
+	for wv in b.waves:
+		var x: float = wv["x"]
+		for k in 12:
+			var a := 1.0 - k / 12.0
+			draw_rect(Rect2(x - 4 - wv["dir"] * k * 2.0, BossFight.FLOOR_Y - 11 + k * 0.5, 8, 11 - k * 0.5), Color(1.0, 0.6, 0.3, a * 0.25))
+		draw_rect(Rect2(x - 3, BossFight.FLOOR_Y - 11, 6, 11), Color("ffb040"))
+		draw_rect(Rect2(x - 1, BossFight.FLOOR_Y - 13, 2, 13), Color.WHITE)
+		if randf() < 0.6:
+			particles.append({"p": Vector2(x, BossFight.FLOOR_Y - 2), "v": Vector2(randf_range(-30, 30), randf_range(-80, -30)), "life": 0.4, "max": 0.4, "c": Color("ffb040"), "s": 1.0, "g": 300.0, "front": true})
+
+
+func _draw_boss_projectiles(w: int) -> void:
+	var b := sim.boss
+	for bl in b.bullets:
+		var p := Vector2(bl["x"], bl["y"])
+		var col := _world_col(bl["w"])
+		var live: bool = bl["w"] == BossFight.BOTH or bl["w"] == w
+		if live:
+			draw_circle(p, bl["r"] + 3.0, Color(col.r, col.g, col.b, 0.25))
+			draw_circle(p, bl["r"], col)
+			draw_circle(p, bl["r"] * 0.45, Color.WHITE)
+		else:
+			draw_arc(p, bl["r"], 0, TAU, 8, Color(col.r, col.g, col.b, 0.35), 1.0)
+	for o in b.orbs:
+		var p := Vector2(o["x"], o["y"]).round()
+		var col := _world_col(o["w"])
+		if o["w"] == w:
+			draw_circle(p, 8.0 + sin(anim * 12.0) * 0.8, Color(col.r, col.g, col.b, 0.2))
+			draw_circle(p, 5.0, col)
+			draw_circle(p, 2.5, Color.WHITE)
+			draw_rect(Rect2(p + Vector2(-2, -1), Vector2(1, 1)), Color("170720"))
+			draw_rect(Rect2(p + Vector2(1, -1), Vector2(1, 1)), Color("170720"))
+		else:
+			draw_arc(p, 5.0, 0, TAU, 10, Color(col.r, col.g, col.b, 0.4), 1.0)
+
+
+func _draw_pbullets() -> void:
+	for bl in sim.pbullets:
+		var p := Vector2(bl["x"], bl["y"])
+		var col := Color(bl["color"])
+		var v := Vector2(bl["vx"], bl["vy"]).normalized()
+		for k in 3:
+			draw_circle(p - v * (k + 1) * 3.0, bl["r"] * (0.8 - k * 0.2), Color(col.r, col.g, col.b, 0.35 - k * 0.1))
+		draw_circle(p, bl["r"] + 1.5, Color(col.r, col.g, col.b, 0.3))
+		draw_circle(p, bl["r"], col)
+		draw_circle(p, maxf(1.0, bl["r"] * 0.4), Color.WHITE)
 
 
 func _ease(t: float) -> float:
@@ -676,6 +1036,8 @@ func _draw_player(w: int) -> void:
 		key = "run%d" % (int(run_time * 12.0) % 4)
 	var tex: Texture2D = sprites[w][key]
 	var origin := pp + Vector2(5, 14)  # feet centre
+	if sim.boss != null and sim.invuln > 0.0 and fmod(anim * 14.0, 1.0) < 0.45 and win_fx < 0.0:
+		return
 	var sc := squash
 	var rot := 0.0
 	if win_fx >= 0.0:
@@ -686,13 +1048,14 @@ func _draw_player(w: int) -> void:
 		if k >= 1.0:
 			return
 	# scarf tail (drawn behind the body)
-	var pal: Dictionary = PLAYER_PAL[w]
+	var pal: Dictionary = player_pal[w]
 	if win_fx < 0.0:
 		for i in range(1, scarf.size()):
 			var s: Vector2 = scarf[i]
 			draw_rect(Rect2(s.floor(), Vector2(2, 1 if i > 2 else 2)), pal["s"])
 	draw_set_transform(origin, rot, Vector2(sc.x * sim.facing, sc.y))
 	draw_texture(tex, Vector2(-6, -16))
+	_draw_accessory(player_acc, pal, w)
 	draw_set_transform(Vector2.ZERO)
 	if blocked_fx > 0.0:
 		var a := blocked_fx / 0.35
@@ -702,6 +1065,35 @@ func _draw_player(w: int) -> void:
 		draw_circle(pp + Vector2(5, 7), (1.0 - respawn_fx) * 22.0, Color(C_ACCENT[w].r, C_ACCENT[w].g, C_ACCENT[w].b, respawn_fx * 0.4))
 
 
+## Hat / halo drawn on top of the sprite in sprite-local coordinates.
+func _draw_accessory(acc: String, pal: Dictionary, _w: int, ci: CanvasItem = null) -> void:
+	var cv: CanvasItem = ci if ci != null else self
+	match acc:
+		"crown":
+			var gold := Color("ffd84a")
+			cv.draw_rect(Rect2(-3, -17, 6, 2), gold)
+			cv.draw_rect(Rect2(-3, -19, 1, 2), gold)
+			cv.draw_rect(Rect2(-1, -20, 1, 3), gold)
+			cv.draw_rect(Rect2(1, -19, 1, 2), gold)
+			cv.draw_rect(Rect2(-1, -17, 1, 1), Color("ff2e55"))
+		"horns":
+			var hc: Color = pal["e"]
+			cv.draw_rect(Rect2(-4, -17, 1, 2), hc)
+			cv.draw_rect(Rect2(-5, -19, 1, 2), hc)
+			cv.draw_rect(Rect2(3, -17, 1, 2), hc)
+			cv.draw_rect(Rect2(4, -19, 1, 2), hc)
+		"halo":
+			var hc2 := Color(1.0, 0.95, 0.6, 0.8 + sin(anim * 4.0) * 0.2)
+			cv.draw_rect(Rect2(-3, -20, 6, 1), hc2)
+			cv.draw_rect(Rect2(-4, -19, 1, 1), hc2)
+			cv.draw_rect(Rect2(3, -19, 1, 1), hc2)
+			cv.draw_rect(Rect2(-3, -18, 6, 1), Color(hc2.r, hc2.g, hc2.b, 0.5))
+		"band":
+			cv.draw_rect(Rect2(-4, -13, 8, 1), pal["s"])
+			cv.draw_rect(Rect2(-6, -13, 2, 1), pal["s"])
+			cv.draw_rect(Rect2(-7, -12, 2, 1), pal["s"])
+
+
 # ------------------------------------------------------------------ baking
 
 func _bake_player(w: int, legs_key: String) -> ImageTexture:
@@ -709,7 +1101,7 @@ func _bake_player(w: int, legs_key: String) -> ImageTexture:
 	img.fill(Color(0, 0, 0, 0))
 	var rows: Array = PLAYER_FRAMES["body"].duplicate()
 	rows.append_array(PLAYER_FRAMES[legs_key])
-	var pal: Dictionary = PLAYER_PAL[w]
+	var pal: Dictionary = player_pal[w]
 	for y in rows.size():
 		var row: String = rows[y]
 		for x in 12:
@@ -773,7 +1165,13 @@ func _img_stone(img: Image, cx: int, cy: int, w: int) -> void:
 	var rgt := not _same(cx + 1, cy, Sim.T_STONE)
 	var interior := not (top or bot or lft or rgt)
 	var base: Color = C_STONE_DEEP[w] if interior else C_STONE[w]
-	img.fill_rect(Rect2i(x, y, 16, 16), base)
+	# deeper stone gets darker (ambient occlusion)
+	var depth := 0
+	while depth < 5 and _same(cx, cy - depth - 1, Sim.T_STONE):
+		depth += 1
+	for row in 16:
+		var k := clampf((depth * 16 + row - 6) / 70.0, 0.0, 0.6)
+		img.fill_rect(Rect2i(x, y + row, 16, 1), base.darkened(k * (0.45 if w == LIGHT else 0.6)))
 	var off := 0 if cy % 2 == 0 else 8
 	img.fill_rect(Rect2i(x, y + 7, 16, 1), C_MORTAR[w])
 	img.fill_rect(Rect2i(x + (4 + off) % 16, y, 1, 7), C_MORTAR[w])
@@ -783,6 +1181,11 @@ func _img_stone(img: Image, cx: int, cy: int, w: int) -> void:
 		var sx := (h >> (i * 4)) % 14 + 1
 		var sy := (h >> (i * 4 + 2)) % 14 + 1
 		img.set_pixel(x + sx, y + sy, C_SPECK[w])
+	# small cracks and pits for a rougher, more natural stone
+	for i in 4:
+		var px := (h >> (i * 3 + 5)) % 15
+		var py := (h >> (i * 5 + 1)) % 15
+		img.set_pixel(x + px, y + py, img.get_pixel(x + px, y + py).darkened(0.18))
 	if lft:
 		img.fill_rect(Rect2i(x, y, 1, 16), C_OUTLINE[w])
 		img.fill_rect(Rect2i(x + 1, y, 1, 16), C_SIDE[w])

@@ -52,6 +52,8 @@ const T_OGATE := 79   # O
 const T_CRUMBLE := 66 # B
 const T_STOP := 58    # :
 
+const DEFAULT_WEAPON := {"dmg": 1, "cd": 0.28, "speed": 260.0, "count": 1, "spread": 0.0, "size": 2.0, "pierce": false, "color": "7fe3ff"}
+
 var level_index := 0
 var level_name := ""
 var grid := PackedByteArray()
@@ -100,10 +102,27 @@ var bolts: Array = []              # [{x,y,vx}]
 var events: Array = []             # [[name, x, y], ...] produced by the last step
 var solver_mode := false           # lighter bookkeeping for automated tests
 
+# Tokens
+var tokens: Array[Rect2] = []
+var tokens_taken: Array[bool] = []
+
+# Boss fights
+var boss: BossFight = null
+var max_hp := 6
+var player_hp := 6
+var invuln := 0.0
+var invincible := false            # automated tests
+var pbullets: Array = []           # [{x,y,vx,vy,dmg,r,pierce,life,color}]
+var weapon: Dictionary = DEFAULT_WEAPON
+var fire_cd := 0.0
+
 
 func load_level(i: int) -> void:
+	load_data(Levels.get_level(i), i)
+
+
+func load_data(data: Dictionary, i: int) -> void:
 	level_index = i
-	var data: Dictionary = Levels.get_level(i)
 	level_name = data["name"]
 	var rows: Array = data["map"]
 	var sign_texts: Array = data.get("signs", [])
@@ -122,6 +141,10 @@ func load_level(i: int) -> void:
 	bolts.clear()
 	has_shard = false
 	shard_taken = false
+	tokens.clear()
+	tokens_taken.clear()
+	boss = null
+	pbullets.clear()
 	var sign_i := 0
 	for cy in ROWS:
 		var row: String = rows[cy]
@@ -145,6 +168,9 @@ func load_level(i: int) -> void:
 					exit_rect = Rect2(x + 2, y - 14, 12, 30)
 				"C":
 					checkpoints.append(Rect2(x + 3, y, 10, 16))
+				"$":
+					tokens.append(Rect2(x + 3, y + 3, 10, 10))
+					tokens_taken.append(false)
 				"*":
 					has_shard = true
 					shard_rect = Rect2(x + 3, y + 3, 10, 10)
@@ -176,6 +202,13 @@ func load_level(i: int) -> void:
 							n += 1
 						movers.append({"x": float(x), "y": float(y), "w": n * TS, "h": 8, "axis": 1, "dir": -1, "speed": LIFT_SPEED, "dx": 0.0, "dy": 0.0, "x0": float(x), "y0": float(y)})
 			grid[cy * COLS + cx] = code
+	for c in data.get("tokens", []):
+		tokens.append(Rect2(c[0] * TS + 3, c[1] * TS + 3, 10, 10))
+		tokens_taken.append(false)
+	if data.has("boss"):
+		boss = BossFight.new()
+		boss.tier = int(data["boss"])
+		exit_rect = Rect2(-1000, -1000, 1, 1)
 	crumble_state = PackedInt32Array()
 	crumble_state.resize(crumble_pos.size())
 	crumble_timer = PackedFloat32Array()
@@ -217,6 +250,53 @@ func respawn() -> void:
 		crumble_timer[i] = 0.0
 	for i in lever_inside.size():
 		lever_inside[i] = levers[i].intersects(Rect2(px, py, PW, PH))
+	player_hp = max_hp
+	invuln = 0.0
+	fire_cd = 0.0
+	pbullets.clear()
+	if boss != null:
+		boss.setup(self, boss.tier)
+
+
+func is_boss() -> bool:
+	return boss != null
+
+
+func hurt_rect() -> Rect2:
+	return Rect2(px + 1, py + 1, PW - 2, PH - 1)
+
+
+## Boss stages use health instead of instant death.
+func hurt(amount: int, from_x: float) -> void:
+	if invuln > 0.0 or dead or won or invincible:
+		return
+	player_hp = maxi(0, player_hp - amount)
+	invuln = 1.1
+	var away := signf(px + PW / 2.0 - from_x)
+	if away == 0.0:
+		away = -facing
+	vx = away * 150.0
+	vy = -210.0
+	on_ground = false
+	_emit("hurt", px + PW / 2.0, py + PH / 2.0)
+	if player_hp <= 0:
+		_die()
+
+
+func tokens_collected() -> int:
+	var n := 0
+	for t in tokens_taken:
+		if t:
+			n += 1
+	return n
+
+
+func taken_indices() -> Array:
+	var out := []
+	for i in tokens_taken.size():
+		if tokens_taken[i]:
+			out.append(i)
+	return out
 
 
 # ---------------------------------------------------------------- tiles
@@ -371,6 +451,57 @@ func step(input: Dictionary, dt: float = 1.0 / 60.0) -> void:
 	_check_hazards()
 	if py > ROWS * TS + 8:
 		_die()
+	if boss != null and not dead:
+		invuln = maxf(0.0, invuln - dt)
+		_update_firing(input, dt)
+		_update_pbullets(dt)
+		boss.step(dt)
+
+
+func _update_firing(input: Dictionary, dt: float) -> void:
+	fire_cd = maxf(0.0, fire_cd - dt)
+	if not input.get("fire", false) or fire_cd > 0.0 or not boss.vulnerable():
+		return
+	fire_cd = float(weapon["cd"])
+	var ox := px + PW / 2.0 + facing * 5.0
+	var oy := py + 6.0
+	var aim := Vector2(boss.x - ox, boss.y - oy).angle()
+	var n := int(weapon["count"])
+	var spread := deg_to_rad(float(weapon["spread"]))
+	var spd := float(weapon["speed"])
+	for i in n:
+		var a := aim
+		var off := Vector2.ZERO
+		if n > 1:
+			a = aim - spread / 2.0 + spread * i / float(n - 1)
+			if float(weapon["spread"]) < 8.0:
+				off = Vector2(0, (i - (n - 1) / 2.0) * 5.0).rotated(aim)
+		pbullets.append({"x": ox + off.x, "y": oy + off.y, "vx": cos(a) * spd, "vy": sin(a) * spd,
+			"dmg": int(weapon["dmg"]), "r": float(weapon["size"]), "pierce": bool(weapon["pierce"]),
+			"life": 2.0, "color": weapon["color"]})
+	_emit("fire", ox, oy)
+
+
+func _update_pbullets(dt: float) -> void:
+	var keep := []
+	for b in pbullets:
+		# gentle homing so shots track a moving boss
+		if boss.vulnerable() and not b.get("hit_boss", false):
+			var v := Vector2(b["vx"], b["vy"])
+			var want := Vector2(boss.x - b["x"], boss.y - b["y"]).angle()
+			var ang := rotate_toward(v.angle(), want, 3.0 * dt)
+			v = Vector2.from_angle(ang) * v.length()
+			b["vx"] = v.x
+			b["vy"] = v.y
+		b["x"] += b["vx"] * dt
+		b["y"] += b["vy"] * dt
+		b["life"] -= dt
+		if b["life"] <= 0.0 or b["x"] < TS or b["x"] > (COLS - 1) * TS or b["y"] < TS or b["y"] > ROWS * TS:
+			if b["life"] > 0.0:
+				_emit("shot_fizzle", b["x"], b["y"])
+			continue
+		keep.append(b)
+	pbullets = keep
 
 
 func _emit(name: String, x: float, y: float) -> void:
@@ -632,6 +763,10 @@ func _check_triggers() -> void:
 			cp_y = checkpoints[i].end.y - PH
 			cp_world = world
 			_emit("checkpoint", checkpoints[i].get_center().x, checkpoints[i].position.y)
+	for i in tokens.size():
+		if not tokens_taken[i] and tokens[i].intersects(p):
+			tokens_taken[i] = true
+			_emit("token", tokens[i].get_center().x, tokens[i].get_center().y)
 	if has_shard and not shard_taken and shard_rect.intersects(p):
 		shard_taken = true
 		_emit("shard", shard_rect.get_center().x, shard_rect.get_center().y)
@@ -653,7 +788,11 @@ func _check_hazards() -> void:
 			var c := tile(cx, cy)
 			var active := c == T_SPIKE or (c == T_LSPIKE and world == LIGHT) or (c == T_DSPIKE and world == DARK)
 			if active and Rect2(cx * TS + 2, cy * TS + 7, 12, 9).intersects(hurt):
-				_die()
+				if boss != null:
+					hurt(1, cx * TS + 8)
+					vy = -260.0
+				else:
+					_die()
 				return
 
 
@@ -670,7 +809,7 @@ func snapshot() -> Array:
 	return [px, py, vx, vy, on_ground, coyote, jump_buffer, jump_held, world, gates_flipped,
 		crumble_state.duplicate(), crumble_timer.duplicate(), movers.duplicate(true),
 		walkers.duplicate(true), wisps.duplicate(true), turrets.duplicate(true), bolts.duplicate(true),
-		lever_inside.duplicate(), shard_taken, won, dead, time, facing]
+		lever_inside.duplicate(), shard_taken, won, dead, time, facing, tokens_taken.duplicate()]
 
 
 func restore(s: Array) -> void:
@@ -681,3 +820,4 @@ func restore(s: Array) -> void:
 	turrets = s[15].duplicate(true); bolts = s[16].duplicate(true)
 	lever_inside = s[17].duplicate(); shard_taken = s[18]; won = s[19]; dead = s[20]; time = s[21]
 	facing = s[22]
+	tokens_taken = s[23].duplicate()
